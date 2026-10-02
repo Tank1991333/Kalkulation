@@ -38,7 +38,7 @@ export const COMPANY_FIELDS = [
   ["name", "Firma"], ["address", "Adresse"], ["contact", "Ansprechpartner"],
   ["email", "E-Mail"], ["phone", "Telefon"],
 ];
-const DEFAULT_COMPANY = { name: "Grabner Gruppe", address: "", contact: "", email: "", phone: "" };
+const DEFAULT_COMPANY = { name: "Mustermann", address: "", contact: "", email: "", phone: "" };
 
 const row = (description, quantity, unit, unitPrice = 0, rateKey = "") =>
   ({ id: uid(), description, quantity, unit, unitPrice, factor: 1, rateKey });
