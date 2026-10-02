@@ -1,34 +1,306 @@
-import React,{useEffect,useMemo,useRef,useState}from"react";
-import{Calculator,Copy,Download,FileText,FolderOpen,FolderPlus,ImageUp,Plus,Printer,RotateCcw,Save,Search,Settings2,Trash2,X,ChevronDown,ChevronUp}from"lucide-react";
-const eur=new Intl.NumberFormat("de-AT",{style:"currency",currency:"EUR"});
-const num=new Intl.NumberFormat("de-AT",{maximumFractionDigits:2});
-const KEY="stahlkalkulation:projects",ACTIVE="stahlkalkulation:active-project";
-const DEFAULTS={materialKgPrice:1.65,materialWaste:8,engineeringRate:78,workshopRate:64,weldingRate:69,machineRate:82,assemblyRate:72,craneRate:145,travelRate:.75,overhead:10,risk:5,profit:12};
-const emptyProject={projectNo:"2026-001",projectName:"Stahlkonstruktion",customer:"",location:"",date:new Date().toISOString().slice(0,10)};
-const defaultCompany={name:"Grabner Gruppe",address:"",contact:"",email:"",phone:""};
-const seed={material:[{id:1,description:"Profile / Träger / Bleche",quantity:1000,unit:"kg",unitPrice:1.65,factor:1.08},{id:2,description:"Schrauben und Verbindungsmittel",quantity:1,unit:"pauschal",unitPrice:250,factor:1},{id:3,description:"Oberflächenbehandlung",quantity:80,unit:"m²",unitPrice:18,factor:1}],engineering:[{id:4,description:"Technische Bearbeitung / Planung",quantity:12,unit:"Std.",unitPrice:78,factor:1},{id:5,description:"Werkstattzeichnungen",quantity:8,unit:"Std.",unitPrice:78,factor:1},{id:6,description:"Statik / externe Leistung",quantity:1,unit:"pauschal",unitPrice:750,factor:1}],production:[{id:7,description:"Zuschnitt und Vorbereitung",quantity:18,unit:"Std.",unitPrice:64,factor:1},{id:8,description:"Schweißen",quantity:22,unit:"Std.",unitPrice:69,factor:1},{id:9,description:"Maschinenzeit",quantity:6,unit:"Std.",unitPrice:82,factor:1},{id:10,description:"Endkontrolle und Verladung",quantity:5,unit:"Std.",unitPrice:64,factor:1}],assembly:[{id:11,description:"Montagepersonal",quantity:32,unit:"Std.",unitPrice:72,factor:1},{id:12,description:"Kran / Hebegerät",quantity:8,unit:"Std.",unitPrice:145,factor:1},{id:13,description:"Fahrtkosten",quantity:160,unit:"km",unitPrice:.75,factor:1},{id:14,description:"Unterkunft / Diäten",quantity:1,unit:"pauschal",unitPrice:480,factor:1}]};
-const cats=[{key:"material",title:"Rohmaterial",accent:"#53657a"},{key:"engineering",title:"Technik",accent:"#2871b2"},{key:"production",title:"Fertigung",accent:"#df861f"},{key:"assembly",title:"Montage",accent:"#278267"}];
-const n=(v,f=0)=>{const x=Number(v);return v!==""&&Number.isFinite(x)?x:f},total=r=>n(r.quantity)*n(r.unitPrice)*n(r.factor,1),clone=()=>Object.fromEntries(cats.map(c=>[c.key,seed[c.key].map(x=>({...x}))]));
-function Field({label,value,onChange,type="text",suffix}){return <label><small>{label}</small><div className="rel"><input type={type} step="0.01" value={value??""} onChange={e=>onChange(e.target.value)}/>{suffix&&<b>{suffix}</b>}</div></label>}
-export default function App(){
-const[project,setProject]=useState({...emptyProject}),[settings,setSettings]=useState({...DEFAULTS}),[rows,setRows]=useState(clone),[company,setCompany]=useState({...defaultCompany}),[logo,setLogo]=useState(""),[projects,setProjects]=useState({}),[active,setActive]=useState("material"),[companyOpen,setCompanyOpen]=useState(false),[settingsOpen,setSettingsOpen]=useState(false),[manager,setManager]=useState(false),[search,setSearch]=useState(""),[notice,setNotice]=useState(""),[status,setStatus]=useState("Wird geladen ...");
-const hydrated=useRef(false);const flash=t=>{setNotice(t);setTimeout(()=>setNotice(""),2500)};
-useEffect(()=>{try{const p=JSON.parse(localStorage.getItem(KEY)||"{}");setProjects(p);const a=localStorage.getItem(ACTIVE);if(a&&p[a])apply(p[a]);setStatus(a&&p[a]?`Projekt ${a} geladen`:"Noch kein Projekt gespeichert")}catch{setStatus("Ladefehler")}finally{hydrated.current=true}},[]);
-const apply=s=>{setProject({...emptyProject,...s.project});setSettings({...DEFAULTS,...s.settings});setRows(s.rows||clone());setCompany({...defaultCompany,...s.company});setLogo(s.logo||"")};
-const save=()=>{const id=project.projectNo.trim();if(!id)return flash("Projektnummer fehlt");const snap={version:2,savedAt:new Date().toISOString(),project:{...project,projectNo:id},settings,rows,company,logo};const p={...projects,[id]:snap};localStorage.setItem(KEY,JSON.stringify(p));localStorage.setItem(ACTIVE,id);setProjects(p);setStatus(`Projekt ${id} gespeichert`);flash("Projekt gespeichert")};
-useEffect(()=>{if(hydrated.current)setStatus("Ungespeicherte Änderungen")},[project,settings,rows,company,logo]);
-const totals=useMemo(()=>Object.fromEntries(cats.map(c=>[c.key,(rows[c.key]||[]).reduce((s,r)=>s+total(r),0)])),[rows]);const direct=Object.values(totals).reduce((a,b)=>a+b,0),over=direct*n(settings.overhead)/100,risk=(direct+over)*n(settings.risk)/100,cost=direct+over+risk,profit=cost*n(settings.profit)/100,offer=cost+profit;
-const update=(cat,id,k,v)=>setRows(r=>({...r,[cat]:r[cat].map(x=>x.id===id?{...x,[k]:["quantity","unitPrice","factor"].includes(k)?n(v,k==="factor"?1:0):v}:x)}));
-const add=cat=>setRows(r=>({...r,[cat]:[...r[cat],{id:Date.now(),description:"Neue Position",quantity:1,unit:"pauschal",unitPrice:0,factor:1}]}));
-const del=(cat,id)=>setRows(r=>({...r,[cat]:r[cat].filter(x=>x.id!==id)}));
-const fresh=()=>{const year=new Date().getFullYear(),ids=Object.keys(projects).map(x=>Number(x.match(new RegExp(`^${year}-(\\d+)$`))?.[1]||0)),id=`${year}-${String(Math.max(0,...ids)+1).padStart(3,"0")}`;setProject({...emptyProject,projectNo:id,projectName:"Neues Stahlbauprojekt"});setRows(clone());setSettings({...DEFAULTS});localStorage.setItem(ACTIVE,id)};
-const csv=()=>{let a=[["Bereich","Position","Menge","Einheit","Einzelpreis","Faktor","Gesamt"]];cats.forEach(c=>rows[c.key].forEach(r=>a.push([c.title,r.description,r.quantity,r.unit,r.unitPrice,r.factor,total(r)])));a.push([],['Angebot netto',offer]);const blob=new Blob(['\ufeff'+a.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(';')).join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),l=document.createElement('a');l.href=u;l.download=`${project.projectNo}_Stahlbau.csv`;l.click();URL.revokeObjectURL(u)};
-const logoFile=e=>{const f=e.target.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>setLogo(String(rd.result));rd.readAsDataURL(f)};
-return <div className="app"><style>{css}</style><header><div className="brand"><div className="icon"><Calculator/></div><div><h1>Stahlbau-Kalkulation <em>Angebotskalkulation</em></h1><p>{project.projectNo} · {project.projectName} <i>● {status}</i></p></div></div><div className="actions"><button onClick={()=>setManager(true)}><FolderOpen/> Projekte</button><button className="blue" onClick={save}><Save/> Speichern</button><button onClick={csv}><Download/> CSV</button><button className="amber" onClick={()=>print()}><Printer/> Drucken</button><button onClick={()=>confirm("Projekt zurücksetzen?")&&(setRows(clone()),setSettings({...DEFAULTS}))}><RotateCcw/></button></div></header><main>{notice&&<div className="notice">{notice}</div>}
-{manager&&<div className="modal"><div className="dialog"><div className="dhead"><h2>Projektverwaltung</h2><button onClick={()=>setManager(false)}><X/></button></div><button className="new" onClick={()=>{fresh();setManager(false)}}><FolderPlus/> Neues Projekt</button>{Object.entries(projects).map(([id,s])=><div className="project" key={id}><button onClick={()=>{apply(s);localStorage.setItem(ACTIVE,id);setManager(false)}}><strong>{id} · {s.project.projectName}</strong><small>{s.project.customer||"Kein Kunde"}</small></button><button onClick={()=>{const p={...projects};delete p[id];setProjects(p);localStorage.setItem(KEY,JSON.stringify(p))}}><Trash2/></button></div>)}</div></div>}
-<section className="card"><button className="toggle" onClick={()=>setCompanyOpen(!companyOpen)}><span><ImageUp/> Firmenkopf und Logo</span>{companyOpen?<ChevronUp/>:<ChevronDown/>}</button>{companyOpen&&<div className="form"><label className="upload">{logo?<img src={logo}/>:"Kein Logo"}<input type="file" accept="image/*" onChange={logoFile}/></label>{Object.keys(defaultCompany).map(k=><Field key={k} label={k} value={company[k]} onChange={v=>setCompany({...company,[k]:v})}/>)}</div>}</section>
-<section className="card pad"><div className="title"><span><FileText/> Projektdaten</span><button onClick={fresh}><FolderPlus/> Neu</button></div><div className="grid5"><Field label="Projektnummer" value={project.projectNo} onChange={v=>setProject({...project,projectNo:v})}/><Field label="Projekt" value={project.projectName} onChange={v=>setProject({...project,projectName:v})}/><Field label="Kunde" value={project.customer} onChange={v=>setProject({...project,customer:v})}/><Field label="Montageort" value={project.location} onChange={v=>setProject({...project,location:v})}/><Field label="Datum" type="date" value={project.date} onChange={v=>setProject({...project,date:v})}/></div></section>
-<section className="card"><button className="toggle" onClick={()=>setSettingsOpen(!settingsOpen)}><span><Settings2/> Standardwerte</span>{settingsOpen?<ChevronUp/>:<ChevronDown/>}</button>{settingsOpen&&<div className="settings">{Object.keys(DEFAULTS).map(k=><Field key={k} label={k} type="number" value={settings[k]} onChange={v=>setSettings({...settings,[k]:n(v)})}/>)}</div>}</section>
-<div className="work"><aside className="card"><h3>Kalkulationsbereiche</h3>{cats.map(c=><button style={{borderLeftColor:c.accent,background:active===c.key?c.accent:"white",color:active===c.key?"white":"#172033"}} onClick={()=>setActive(c.key)} key={c.key}><b>{c.title}</b><small>{rows[c.key].length} Positionen</small><strong>{eur.format(totals[c.key])}</strong></button>)}<div className="direct">Direkte Kosten<strong>{eur.format(direct)}</strong></div></aside><section className="card table"><div className="thead" style={{borderLeftColor:cats.find(c=>c.key===active).accent}}><h2>{cats.find(c=>c.key===active).title}</h2><Search/></div><div className="scroll"><table><thead><tr><th>Position</th><th>Menge</th><th>Einheit</th><th>Einzelpreis</th><th>Faktor</th><th>Gesamt</th><th/></tr></thead><tbody>{rows[active].map(r=><tr key={r.id}><td><input value={r.description} onChange={e=>update(active,r.id,"description",e.target.value)}/></td><td><input type="number" value={r.quantity} onChange={e=>update(active,r.id,"quantity",e.target.value)}/></td><td><input value={r.unit} onChange={e=>update(active,r.id,"unit",e.target.value)}/></td><td><input type="number" value={r.unitPrice} onChange={e=>update(active,r.id,"unitPrice",e.target.value)}/></td><td><input type="number" value={r.factor} onChange={e=>update(active,r.id,"factor",e.target.value)}/></td><td><strong>{eur.format(total(r))}</strong></td><td><button onClick={()=>del(active,r.id)}><Trash2/></button></td></tr>)}</tbody></table></div><button className="add" onClick={()=>add(active)}><Plus/> Position hinzufügen</button></section></div>
-<section className="summary card"><h2>Zusammenfassung</h2>{cats.map(c=><p key={c.key}><span>{c.title}</span><b>{eur.format(totals[c.key])}</b></p>)}<hr/><p><span>Direkte Kosten</span><b>{eur.format(direct)}</b></p><p><span>Gemeinkosten</span><b>{eur.format(over)}</b></p><p><span>Risiko</span><b>{eur.format(risk)}</b></p><p><strong>Selbstkosten</strong><b>{eur.format(cost)}</b></p><p><span>Gewinn</span><b>{eur.format(profit)}</b></p><div><strong>Angebot netto</strong><b>{eur.format(offer)}</b></div></section></main></div>}
-const css=`:root{--navy:#172033;--blue:#2563a8}.app{min-height:100vh;background:#e7edf3;color:#172033}header{background:linear-gradient(120deg,#111827,#283850,#1e4266);color:white;border-bottom:3px solid #e78824;box-shadow:0 8px 24px #0f172a30}.brand{max-width:1280px;margin:auto;padding:12px 16px;display:flex;gap:12px;align-items:center}.icon{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#fbbf24,#f97316);display:grid;place-items:center;color:#111827}.brand h1{margin:0;font-size:24px}.brand em{font-size:9px;font-style:normal;border:1px solid #ffffff25;border-radius:20px;padding:3px 7px}.brand p{margin:4px 0 0;font-size:11px}.brand i{color:#6ee7b7;font-style:normal;margin-left:12px}.actions{min-height:27px;padding:1px calc((100% - 1280px)/2 + 16px);display:flex;justify-content:flex-end;gap:3px;background:#ef44441a;border-top:1px solid #fecaca25}.actions button,.title button,.new{border:0;background:transparent;color:inherit;border-radius:6px;padding:5px 8px;display:flex;gap:5px;align-items:center}.actions svg,.title svg,button svg{width:14px;height:14px}.actions .blue{background:#2563eb}.actions .amber{background:#f59e0b;color:#111827}main{max-width:1280px;margin:auto;padding:12px;display:grid;gap:12px}.card{background:#fff;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 6px 18px #1e293b12;overflow:hidden}.pad{padding:12px}.toggle{width:100%;display:flex;justify-content:space-between;padding:11px 16px;border:0;background:white;font-weight:700}.toggle span,.title span{display:flex;gap:8px;align-items:center}.form,.settings,.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:12px;border-top:1px solid #e2e8f0}.settings{grid-template-columns:repeat(4,1fr)}label small{display:block;font-size:10px;text-transform:uppercase;font-weight:800;color:#64748b;margin-bottom:4px}input{width:100%;border:1px solid #94a3b8;border-radius:7px;padding:7px;background:white}.rel{position:relative}.rel b{position:absolute;right:8px;top:7px}.upload{grid-row:span 2;border:2px dashed #94a3b8;display:grid;place-items:center;min-height:80px}.upload img{max-height:72px;max-width:150px}.upload input{display:none}.title{display:flex;justify-content:space-between;font-weight:800;margin-bottom:10px}.work{display:grid;grid-template-columns:210px 1fr;gap:12px}.work aside h3{margin:0;padding:10px;background:#111827;color:white;font-size:12px}.work aside>button{width:calc(100% - 16px);margin:4px 8px;border:1px solid #cbd5e1;border-left:4px solid;display:grid;text-align:left;padding:8px;border-radius:8px}.work aside small{font-size:10px}.direct{padding:10px;background:#f8fafc;display:grid;font-size:10px}.direct strong{font-size:16px}.thead{border-left:6px solid;padding:10px;display:flex;justify-content:space-between}.thead h2{margin:0;font-size:16px}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;min-width:800px;font-size:12px}th{background:#e9eff5;text-align:left;padding:8px}td{padding:5px}td input{padding:6px}td:nth-child(n+2){text-align:right}.add{margin:8px;border:1px dashed #64748b;background:white;border-radius:7px;padding:7px;display:flex;gap:5px}.summary{width:390px;margin-left:auto;padding:14px}.summary h2{font-size:15px}.summary p{display:flex;justify-content:space-between;margin:5px 0}.summary>div{display:flex;justify-content:space-between;background:#fde68a;padding:12px;border-radius:8px;margin-top:8px}.notice{position:fixed;right:15px;top:15px;background:#047857;color:white;padding:10px 16px;border-radius:8px;z-index:10}.modal{position:fixed;inset:0;background:#020617aa;display:grid;place-items:center;z-index:20}.dialog{width:min(700px,90vw);max-height:80vh;overflow:auto;background:white;border-radius:16px;padding:12px}.dhead,.project{display:flex;justify-content:space-between;align-items:center}.project{border:1px solid #e2e8f0;border-radius:10px;margin-top:7px;padding:8px}.project>button:first-child{display:grid;text-align:left;flex:1;border:0;background:white}.project small{display:block}.new{background:#1d4ed8;color:white}@media(max-width:800px){.work{grid-template-columns:1fr}.grid5,.form,.settings{grid-template-columns:1fr 1fr}.summary{width:100%}}@media print{.actions,main>.card,.work aside,.add,.notice{display:none!important}.app{background:white}.work{display:block}.table{box-shadow:none;border:0}header{color:#111;background:white;border:0}.brand i,.brand em{display:none}}`;
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Calculator, ChevronDown, ChevronUp, Download, FileText, FolderOpen, FolderPlus, ImageUp,
+  Plus, Printer, RotateCcw, Save, Search, Settings2, Trash2,
+} from "lucide-react";
+import {
+  CATS, COMPANY_FIELDS, DEFAULT_SETTINGS, RATES, SETTING_FIELDS, hydrate, makeDoc, newRow, nextProjectNo, seedRows,
+} from "./data";
+import { calcTotals, eur, factorOf, lineTotal, priceOf, summaryLines } from "./calc";
+import { downloadFile, loadActive, loadProjects, persist, toCsv } from "./storage";
+import ProjectManager from "./components/ProjectManager";
+import PrintSheet from "./components/PrintSheet";
+
+function Field({ label, value, onChange, type = "text", suffix }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <div className="suffix-wrap">
+        <input
+          type={type === "date" ? "date" : "text"}
+          inputMode={type === "num" ? "decimal" : undefined}
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        {suffix && <b>{suffix}</b>}
+      </div>
+    </label>
+  );
+}
+
+export default function App() {
+  const [boot] = useState(() => {
+    const p = loadProjects(), a = loadActive(), ok = a && p[a];
+    return { p, d: ok ? hydrate(p[a]) : makeDoc(p), id: ok ? a : null };
+  });
+  const [projects, setProjects] = useState(boot.p);
+  const [doc, setDoc] = useState(boot.d);
+  const [savedId, setSavedId] = useState(boot.id);
+  const [savedJson, setSavedJson] = useState(() => JSON.stringify(boot.d));
+  const [activeCat, setActiveCat] = useState("material");
+  const [search, setSearch] = useState("");
+  const [companyOpen, setCompanyOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [manager, setManager] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const timer = useRef();
+
+  const { project, settings, rows, company, logo } = doc;
+  const dirty = JSON.stringify(doc) !== savedJson;
+  const status = dirty ? "Ungespeicherte Änderungen" : savedId ? "Gespeichert" : "Neues Projekt";
+  const totals = useMemo(() => calcTotals(rows, settings), [rows, settings]);
+  const cat = CATS.find((c) => c.key === activeCat);
+  const q = search.trim().toLowerCase();
+  const visible = rows[activeCat].filter((r) => r.description.toLowerCase().includes(q));
+
+  const flash = (text, error = false) => {
+    clearTimeout(timer.current);
+    setNotice({ text, error });
+    timer.current = setTimeout(() => setNotice(null), 2800);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!dirty) return;
+    const h = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [dirty]);
+
+  const set = (key, v) => setDoc((d) => ({ ...d, [key]: typeof v === "function" ? v(d[key]) : v }));
+  const setIn = (key, field, v) => set(key, (o) => ({ ...o, [field]: v }));
+  const upd = (id, patch) =>
+    set("rows", (r) => ({ ...r, [activeCat]: r[activeCat].map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  const setRate = (r, key) =>
+    upd(r.id, key ? { rateKey: key } : { rateKey: "", unitPrice: priceOf(r, settings), factor: factorOf(r, settings) });
+  const addRow = () => {
+    setSearch("");
+    set("rows", (r) => ({ ...r, [activeCat]: [...r[activeCat], newRow()] }));
+  };
+  const delRow = (id) => set("rows", (r) => ({ ...r, [activeCat]: r[activeCat].filter((x) => x.id !== id) }));
+
+  const confirmLeave = () => !dirty || window.confirm("Ungespeicherte Änderungen gehen verloren. Fortfahren?");
+
+  const save = () => {
+    const id = project.projectNo.trim();
+    if (!id) return flash("Projektnummer fehlt", true);
+    if (id !== savedId && projects[id] && !window.confirm(`Projekt ${id} existiert bereits. Überschreiben?`)) return;
+    const next = { ...projects };
+    if (savedId && savedId !== id) delete next[savedId]; // geänderte Nummer = Umbenennen
+    const d = { ...doc, project: { ...project, projectNo: id } };
+    next[id] = { version: 3, savedAt: new Date().toISOString(), ...d };
+    if (!persist(next, id)) return flash("Speichern fehlgeschlagen: Browser-Speicher voll oder gesperrt", true);
+    setProjects(next); setDoc(d); setSavedId(id); setSavedJson(JSON.stringify(d));
+    flash("Projekt gespeichert");
+  };
+  const open = (id) => {
+    if (!confirmLeave()) return;
+    const d = hydrate(projects[id]);
+    setDoc(d); setSavedId(id); setSavedJson(JSON.stringify(d)); persist(projects, id); setManager(false);
+  };
+  const create = () => {
+    if (!confirmLeave()) return;
+    const d = makeDoc(projects, doc);
+    setDoc(d); setSavedId(null); setSavedJson(JSON.stringify(d)); setManager(false);
+  };
+  const duplicate = (id) => {
+    const no = nextProjectNo(projects), s = projects[id];
+    const next = {
+      ...projects,
+      [no]: { ...s, savedAt: new Date().toISOString(), project: { ...s.project, projectNo: no, projectName: `${s.project.projectName} (Kopie)` } },
+    };
+    if (persist(next, savedId)) { setProjects(next); flash(`Kopie ${no} angelegt`); } else flash("Speichern fehlgeschlagen", true);
+  };
+  const remove = (id) => {
+    if (!window.confirm(`Projekt ${id} endgültig löschen?`)) return;
+    const next = { ...projects };
+    delete next[id];
+    if (!persist(next, id === savedId ? null : savedId)) return flash("Löschen fehlgeschlagen", true);
+    setProjects(next);
+    if (id === savedId) { setSavedId(null); setSavedJson(""); }
+  };
+  const exportBackup = () =>
+    downloadFile("stahlbau-backup.json", JSON.stringify({ app: "stahlbau-kalkulation", projects }, null, 2), "application/json");
+  const importBackup = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      const incoming = j.projects || (j.project?.projectNo ? { [j.project.projectNo]: j } : null);
+      if (!incoming) throw new Error("Format");
+      const next = { ...projects, ...incoming };
+      if (!persist(next, savedId)) throw new Error("Speicher");
+      setProjects(next);
+      flash(`${Object.keys(incoming).length} Projekt(e) importiert`);
+    } catch { flash("Import fehlgeschlagen: keine gültige Backup-Datei", true); }
+  };
+
+  const exportCsv = () => downloadFile(`${project.projectNo || "Projekt"}_Stahlbau.csv`, toCsv(doc, totals), "text/csv;charset=utf-8");
+  const reset = () => {
+    if (window.confirm("Positionen und Standardwerte dieses Projekts auf die Vorlage zurücksetzen?"))
+      setDoc((d) => ({ ...d, rows: seedRows(), settings: { ...DEFAULT_SETTINGS } }));
+  };
+  // Logo auf max. 320 px verkleinern, damit der Browser-Speicher nicht überläuft
+  const onLogo = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    const img = new Image(), url = URL.createObjectURL(f);
+    img.onload = () => {
+      const k = Math.min(1, 320 / (img.width || 320)), c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      set("logo", c.toDataURL("image/png"));
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); flash("Bild konnte nicht gelesen werden", true); };
+    img.src = url;
+  };
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <span className="brand-mark"><Calculator /></span>
+            <div>
+              <h1>Stahlbau-Kalkulation</h1>
+              <p>{project.projectNo} – {project.projectName || "Ohne Titel"}</p>
+            </div>
+          </div>
+          <span className={`status ${dirty ? "dirty" : "ok"}`} role="status">{status}</span>
+        </div>
+        <nav className="actions" aria-label="Aktionen">
+          <div className="actions-inner">
+            <button className="btn ghost" onClick={() => setManager(true)}><FolderOpen /> Projekte</button>
+            <button className="btn primary" onClick={save}><Save /> Speichern</button>
+            <button className="btn ghost" onClick={exportCsv}><Download /> CSV</button>
+            <button className="btn accent" onClick={() => window.print()}><Printer /> Drucken</button>
+            <button className="btn ghost" onClick={reset} aria-label="Zurücksetzen" title="Auf Vorlage zurücksetzen"><RotateCcw /></button>
+          </div>
+        </nav>
+      </header>
+
+      <main className="container">
+        {notice && <div className={`notice ${notice.error ? "error" : ""}`} role="status">{notice.text}</div>}
+
+        <section className="card">
+          <button className="toggle" onClick={() => setCompanyOpen(!companyOpen)} aria-expanded={companyOpen}>
+            <span><ImageUp /> Firmenkopf und Logo</span>{companyOpen ? <ChevronUp /> : <ChevronDown />}
+          </button>
+          {companyOpen && (
+            <div className="grid company">
+              <label className="upload">
+                {logo ? <img src={logo} alt="Firmenlogo" /> : <span>Logo auswählen</span>}
+                <input type="file" accept="image/*" onChange={onLogo} />
+              </label>
+              {COMPANY_FIELDS.map(([k, label]) => (
+                <Field key={k} label={label} value={company[k]} onChange={(v) => setIn("company", k, v)} />
+              ))}
+              {logo && <button className="btn" onClick={() => set("logo", "")}>Logo entfernen</button>}
+            </div>
+          )}
+        </section>
+
+        <section className="card pad">
+          <div className="section-title"><span><FileText /> Projektdaten</span>
+            <button className="btn" onClick={create}><FolderPlus /> Neues Projekt</button>
+          </div>
+          <div className="grid five">
+            <Field label="Projektnummer" value={project.projectNo} onChange={(v) => setIn("project", "projectNo", v)} />
+            <Field label="Projekt" value={project.projectName} onChange={(v) => setIn("project", "projectName", v)} />
+            <Field label="Kunde" value={project.customer} onChange={(v) => setIn("project", "customer", v)} />
+            <Field label="Montageort" value={project.location} onChange={(v) => setIn("project", "location", v)} />
+            <Field label="Datum" type="date" value={project.date} onChange={(v) => setIn("project", "date", v)} />
+          </div>
+        </section>
+
+        <section className="card">
+          <button className="toggle" onClick={() => setSettingsOpen(!settingsOpen)} aria-expanded={settingsOpen}>
+            <span><Settings2 /> Standardwerte</span>{settingsOpen ? <ChevronUp /> : <ChevronDown />}
+          </button>
+          {settingsOpen && (
+            <>
+              <p className="hint">Sätze gelten für alle Positionen, denen in der Tabelle dieser Satz zugewiesen ist. Dezimalkomma ist erlaubt.</p>
+              <div className="grid settings">
+                {SETTING_FIELDS.map((f) => (
+                  <Field key={f.key} type="num" label={f.label} suffix={f.suffix} value={settings[f.key]} onChange={(v) => setIn("settings", f.key, v)} />
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+
+        <div className="work">
+          <aside className="card cats">
+            <h3>Kalkulationsbereiche</h3>
+            {CATS.map((c) => (
+              <button key={c.key} className={`cat ${activeCat === c.key ? "on" : ""}`}
+                style={{ "--accent": c.accent }} onClick={() => { setActiveCat(c.key); setSearch(""); }}>
+                <b>{c.title}</b><small>{rows[c.key].length} Positionen</small><strong>{eur.format(totals.byCat[c.key])}</strong>
+              </button>
+            ))}
+            <div className="direct">Direkte Kosten<strong>{eur.format(totals.direct)}</strong></div>
+          </aside>
+
+          <section className="card table-card">
+            <div className="table-head" style={{ "--accent": cat.accent }}>
+              <h2>{cat.title}</h2>
+              <label className="search"><Search />
+                <input type="search" placeholder="Position suchen" aria-label="Position suchen" value={search} onChange={(e) => setSearch(e.target.value)} />
+              </label>
+            </div>
+            <div className="scroll">
+              <table className="positions">
+                <thead>
+                  <tr><th>Position</th><th>Menge</th><th>Einheit</th><th>Satz</th><th>Einzelpreis</th><th>Faktor</th><th>Gesamt</th><th /></tr>
+                </thead>
+                <tbody>
+                  {visible.map((r) => {
+                    const linked = !!r.rateKey, mat = r.rateKey === "materialKgPrice";
+                    return (
+                      <tr key={r.id}>
+                        <td><input aria-label="Position" value={r.description} onChange={(e) => upd(r.id, { description: e.target.value })} /></td>
+                        <td><input aria-label="Menge" inputMode="decimal" value={r.quantity} onChange={(e) => upd(r.id, { quantity: e.target.value })} /></td>
+                        <td><input aria-label="Einheit" value={r.unit} onChange={(e) => upd(r.id, { unit: e.target.value })} /></td>
+                        <td>
+                          <select aria-label="Satz" value={r.rateKey || ""} onChange={(e) => setRate(r, e.target.value)}>
+                            <option value="">Manuell</option>
+                            {Object.entries(RATES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                          </select>
+                        </td>
+                        <td><input aria-label="Einzelpreis" inputMode="decimal" disabled={linked} value={linked ? priceOf(r, settings) : r.unitPrice} onChange={(e) => upd(r.id, { unitPrice: e.target.value })} /></td>
+                        <td><input aria-label="Faktor" inputMode="decimal" disabled={mat} value={mat ? factorOf(r, settings) : r.factor} onChange={(e) => upd(r.id, { factor: e.target.value })} /></td>
+                        <td className="num"><strong>{eur.format(lineTotal(r, settings))}</strong></td>
+                        <td><button className="icon-btn danger" aria-label="Position löschen" onClick={() => delRow(r.id)}><Trash2 /></button></td>
+                      </tr>
+                    );
+                  })}
+                  {!visible.length && (
+                    <tr><td colSpan={8} className="empty">{q ? "Keine Position gefunden." : "Noch keine Position. Füge unten die erste hinzu."}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <button className="btn add" onClick={addRow}><Plus /> Position hinzufügen</button>
+          </section>
+        </div>
+
+        <section className="card summary">
+          <h2>Zusammenfassung</h2>
+          {CATS.map((c) => <p key={c.key}><span>{c.title}</span><b>{eur.format(totals.byCat[c.key])}</b></p>)}
+          <hr />
+          {summaryLines(totals, settings).map(([label, value, strong]) => (
+            <p key={label} className={strong ? "strong" : ""}><span>{label}</span><b>{eur.format(value)}</b></p>
+          ))}
+        </section>
+      </main>
+
+      {manager && (
+        <ProjectManager projects={projects} currentId={savedId} onOpen={open} onNew={create} onDuplicate={duplicate}
+          onDelete={remove} onImport={importBackup} onExport={exportBackup} onClose={() => setManager(false)} />
+      )}
+      <PrintSheet doc={doc} totals={totals} />
+    </div>
+  );
+}
